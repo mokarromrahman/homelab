@@ -1,0 +1,7 @@
+# Ignore all secret environment files anywhere in the repository
+**/.env
+**/.env.local
+
+# Ignore OS-specific hidden junk files
+.DS_Store
+Thumbs.db
