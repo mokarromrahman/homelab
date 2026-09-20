@@ -1,13 +1,14 @@
 services:
-  gluetun:
+  # 1. THE VPN GATEWAY (Gluetun)
+  reading-vpn:
     image: qmcgaw/gluetun
-    container_name: vpn-gluetun
+    container_name: reading-vpn
     cap_add:
       - NET_ADMIN
     devices:
       - /dev/net/tun:/dev/net/tun
     volumes:
-      - /Volume1/Docker/gluetun:/tmp/gluetun
+      - /srv/reading-config/gluetun:/tmp/gluetun
     environment:
       - VPN_SERVICE_PROVIDER=${VPN_SERVICE_PROVIDER}
       - VPN_TYPE=${VPN_TYPE}
@@ -18,85 +19,71 @@ services:
       - FIREWALL_OUTBOUND_SUBNETS=${FIREWALL_OUTBOUND_SUBNETS}
       - UPDATER_PERIOD=24h
     ports:
-      - 8080:8080 # qBittorrent Web UI
-      - 9696:9696 # Prowlarr Web UI
-      - 7878:7878 # Radarr Web UI (Moved here)
-      - 8989:8989 # Sonarr Web UI (Moved here)
+      - 8040:8040 # qBittorrent Web UI
+      - 5000:5000 # Kavita Web UI
     restart: unless-stopped
 
-  qbittorrent:
+  # 2. THE DOWNLOADER (Routed through VPN)
+  reading-qbit:
     image: lscr.io/linuxserver/qbittorrent:latest
-    container_name: qbittorrent
-    network_mode: "service:gluetun"
+    container_name: reading-qbit
+    network_mode: "service:reading-vpn"
     environment:
-      - PUID=0
-      - PGID=997
-      - WEBUI_PORT=8080
+      - PUID=1000
+      - PGID=1000
+      - WEBUI_PORT=8040
       - TZ=America/Edmonton
     volumes:
-      - /Volume1/Docker/qbittorrent:/config
-      - /Volume1/Media:/data
+      - /srv/reading-config/qbittorrent:/config
+      - /srv/reading:/data
     restart: unless-stopped
     depends_on:
-      - gluetun
+      - reading-vpn
 
-  prowlarr:
-    image: lscr.io/linuxserver/prowlarr:latest
-    container_name: prowlarr
-    network_mode: "service:gluetun"
+  # 3. BOOK MANAGEMENT (Normal Network - Swapped to stable Binhex image)
+  readarr:
+    image: binhex/arch-readarr:latest
+    container_name: readarr
+    ports:
+      - 8787:8787
     environment:
-      - PUID=0
-      - PGID=997
+      - PUID=1000
+      - PGID=1000
       - TZ=America/Edmonton
     volumes:
-      - /Volume1/Docker/prowlarr:/config
+      - /srv/reading-config/readarr:/config
+      - /srv/reading:/data
     restart: unless-stopped
-    depends_on:
-      - gluetun
 
-  radarr:
-    image: lscr.io/linuxserver/radarr:latest
-    container_name: radarr
-    network_mode: "service:gluetun"
-    environment:
-      - PUID=0
-      - PGID=997
-      - TZ=America/Edmonton
-    volumes:
-      - /Volume1/Docker/radarr:/config
-      - /Volume1/Media:/data
-    restart: unless-stopped
-    depends_on:
-      - gluetun
 
-  sonarr:
-    image: lscr.io/linuxserver/sonarr:latest
-    container_name: sonarr
-    network_mode: "service:gluetun"
-    environment:
-      - PUID=0
-      - PGID=997
-      - TZ=America/Edmonton
-    volumes:
-      - /Volume1/Docker/sonarr:/config
-      - /Volume1/Media:/data
-    restart: unless-stopped
-    depends_on:
-      - gluetun
 
-  unpackerr:
-    image: golift/unpackerr:latest
-    container_name: unpackerr
-    network_mode: "service:gluetun"
-    volumes:
-      - /Volume1/Media:/data
+  # 4. COMIC/MANGA MANAGEMENT (Normal Network)
+  mylar:
+    image: lscr.io/linuxserver/mylar3:latest
+    container_name: mylar3
+    ports:
+      - 8090:8090
     environment:
+      - PUID=1000
+      - PGID=1000
       - TZ=America/Edmonton
-      - UN_SONARR_0_URL=http://localhost:8989
-      - UN_SONARR_0_API_KEY=${UN_SONARR_0_API_KEY}
-      - UN_RADARR_0_URL=http://localhost:7878
-      - UN_RADARR_0_API_KEY=${UN_RADARR_0_API_KEY}
-      - UN_DEFAULT_EXTRACT_LIMIT=100GB
+    volumes:
+      - /srv/reading-config/mylar:/config
+      - /srv/reading:/data
+    restart: unless-stopped
+
+  # 5. THE READING APP (Kavita)
+  kavita:
+    image: lscr.io/linuxserver/kavita:latest
+    container_name: kavita
+    network_mode: "service:reading-vpn"
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Edmonton
+    volumes:
+      - /srv/reading-config/kavita:/config
+      - /srv/reading:/data
     restart: unless-stopped
     depends_on:
-      - gluetun
+      - reading-vpn
