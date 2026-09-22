@@ -21,6 +21,8 @@ services:
     ports:
       - 8040:8040 # qBittorrent Web UI
       - 5000:5000 # Kavita Web UI
+      - 9696:9696 # Prowlarr
+
     restart: unless-stopped
 
   # 2. THE DOWNLOADER (Routed through VPN)
@@ -63,6 +65,8 @@ services:
     container_name: mylar3
     ports:
       - 8090:8090
+    links:
+      - reading-vpn
     environment:
       - PUID=1000
       - PGID=1000
@@ -84,6 +88,21 @@ services:
     volumes:
       - /srv/reading-config/kavita:/config
       - /srv/reading:/data
+    restart: unless-stopped
+    depends_on:
+      - reading-vpn
+
+  # 7. THE INDEXER MANAGER (Routed through VPN)
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: reading-prowlarr
+    network_mode: "service:reading-vpn"
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Edmonton
+    volumes:
+      - /srv/reading-config/prowlarr:/config
     restart: unless-stopped
     depends_on:
       - reading-vpn
