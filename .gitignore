@@ -5,3 +5,9 @@
 # Ignore OS-specific hidden junk files
 .DS_Store
 Thumbs.db
+
+# Ignore local app containers caches
+reading-stack/appdata/
+
+# Ignore massive download pools
+data/

@@ -1,108 +1,83 @@
 services:
-  # 1. THE VPN GATEWAY (Gluetun)
-  reading-vpn:
-    image: qmcgaw/gluetun
-    container_name: reading-vpn
+  # --- PROTONVPN (via Gluetun) ---
+  vpn:
+    image: qmcgaw/gluetun:v3
+    container_name: protonvpn
     cap_add:
       - NET_ADMIN
     devices:
       - /dev/net/tun:/dev/net/tun
-    volumes:
-      - /srv/reading-config/gluetun:/tmp/gluetun
     environment:
       - VPN_SERVICE_PROVIDER=${VPN_SERVICE_PROVIDER}
       - VPN_TYPE=${VPN_TYPE}
       - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY}
       - WIREGUARD_ADDRESSES=${WIREGUARD_ADDRESSES}
-      - VPN_PORT_FORWARDING=on
-      - PORT_FORWARD_ONLY=on
       - FIREWALL_OUTBOUND_SUBNETS=${FIREWALL_OUTBOUND_SUBNETS}
-      - UPDATER_PERIOD=24h
+      - SERVER_COUNTRIES=Canada
     ports:
-      - 8040:8040 # qBittorrent Web UI
-      - 5000:5000 # Kavita Web UI
-      - 9696:9696 # Prowlarr
-
+      - "8080:8080" # qBittorrent WebUI
+      - "6881:6881" # Torrent transfer
+      - "6881:6881/udp"
     restart: unless-stopped
 
-  # 2. THE DOWNLOADER (Routed through VPN)
-  reading-qbit:
+  # --- QBITTORRENT (Routed through VPN) ---
+  qbittorrent:
     image: lscr.io/linuxserver/qbittorrent:latest
-    container_name: reading-qbit
-    network_mode: "service:reading-vpn"
+    container_name: qbittorrent
+    network_mode: "service:vpn"
     environment:
       - PUID=1000
       - PGID=1000
-      - WEBUI_PORT=8040
       - TZ=America/Edmonton
+      - WEBUI_PORT=8080
     volumes:
-      - /srv/reading-config/qbittorrent:/config
-      - /srv/reading:/data
-    restart: unless-stopped
+      - ./appdata/qbittorrent:/config
+      - ../data:/data # Steps out of reading-stack to access the global homelab data folder
     depends_on:
-      - reading-vpn
-
-  # 3. BOOK MANAGEMENT (Normal Network - Swapped to stable Binhex image)
-  readarr:
-    image: binhex/arch-readarr:latest
-    container_name: readarr
-    ports:
-      - 8787:8787
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=America/Edmonton
-    volumes:
-      - /srv/reading-config/readarr:/config
-      - /srv/reading:/data
+      - vpn
     restart: unless-stopped
 
-
-
-  # 4. COMIC/MANGA MANAGEMENT (Normal Network)
-  mylar:
-    image: lscr.io/linuxserver/mylar3:latest
-    container_name: mylar3
-    ports:
-      - 8090:8090
-    links:
-      - reading-vpn
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=America/Edmonton
-    volumes:
-      - /srv/reading-config/mylar:/config
-      - /srv/reading:/data
-    restart: unless-stopped
-
-  # 5. THE READING APP (Kavita)
-  kavita:
-    image: lscr.io/linuxserver/kavita:latest
-    container_name: kavita
-    network_mode: "service:reading-vpn"
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=America/Edmonton
-    volumes:
-      - /srv/reading-config/kavita:/config
-      - /srv/reading:/data
-    restart: unless-stopped
-    depends_on:
-      - reading-vpn
-
-  # 7. THE INDEXER MANAGER (Routed through VPN)
+  # --- PROWLARR (Manual Indexer Search) ---
   prowlarr:
     image: lscr.io/linuxserver/prowlarr:latest
-    container_name: reading-prowlarr
-    network_mode: "service:reading-vpn"
+    container_name: prowlarr
     environment:
       - PUID=1000
       - PGID=1000
       - TZ=America/Edmonton
     volumes:
-      - /srv/reading-config/prowlarr:/config
+      - ./appdata/prowlarr:/config
+    ports:
+      - "9696:9696"
     restart: unless-stopped
-    depends_on:
-      - reading-vpn
+
+  # --- SUWAYOMI (Manga Downloader Server) ---
+  suwayomi:
+    image: ghcr.io/suwayomi/suwayomi-server:latest
+    container_name: suwayomi
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Edmonton
+    volumes:
+      - ./appdata/suwayomi:/etc/suwayomi
+      # CHANGE THIS LINE TO MATCH SUWAYOMI'S INTERNAL ARCHITECTURE:
+      - ../data/manga:/home/suwayomi/.local/share/Tachidesk/downloads
+    ports:
+      - "4567:4567"
+    restart: unless-stopped
+
+  # --- KAVITA (The Shared Media Reader) ---
+  kavita:
+    image: jvmilazz0/kavita:latest
+    container_name: kavita
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Edmonton
+    volumes:
+      - ../data:/manga # Kavita watches the root data directory for books, comics, and manga
+      - ./appdata/kavita:/kavita/config
+    ports:
+      - "5000:5000"
+    restart: unless-stopped
